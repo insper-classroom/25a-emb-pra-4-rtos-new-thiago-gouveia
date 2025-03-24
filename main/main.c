@@ -21,7 +21,7 @@ QueueHandle_t xQueueDistance = NULL;
 SemaphoreHandle_t xSemaphoreTrigger = NULL; 
 
 void pin_callback(uint gpio, uint32_t events) {
-    static uint64_t local_start = 0;
+    uint64_t local_start = 0;
 
     if (gpio == ECHO_PIN) {
         if (events & GPIO_IRQ_EDGE_RISE) {
