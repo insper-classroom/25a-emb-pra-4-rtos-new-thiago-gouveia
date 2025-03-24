@@ -20,21 +20,31 @@ QueueHandle_t xQueueTime = NULL;
 QueueHandle_t xQueueDistance = NULL;     
 SemaphoreHandle_t xSemaphoreTrigger = NULL; 
 
-volatile uint64_t t_start = 0;
-volatile uint64_t t_end = 0;
-
 void pin_callback(uint gpio, uint32_t events) {
+    static uint64_t local_start = 0;
+
     if (gpio == ECHO_PIN) {
         if (events & GPIO_IRQ_EDGE_RISE) {
-            t_start = time_us_64();
+            local_start = time_us_64();
         } else if (events & GPIO_IRQ_EDGE_FALL) {
-            t_end = time_us_64();
-            uint64_t pulse_duration = t_end - t_start;
+            uint64_t pulse_duration = time_us_64() - local_start;
             BaseType_t xHigherPriorityWoken = pdFALSE;
+
             xQueueSendFromISR(xQueueTime, &pulse_duration, &xHigherPriorityWoken);
             portYIELD_FROM_ISR(xHigherPriorityWoken);
         }
     }
+}
+
+static inline void trigger_sensor(void) {
+    gpio_put(TRIGGER_PIN, 1);
+
+    absolute_time_t t0 = get_absolute_time();
+    while (absolute_time_diff_us(t0, get_absolute_time()) < 10) {
+        tight_loop_contents();
+    }
+
+    gpio_put(TRIGGER_PIN, 0);
 }
 
 void trigger_task(void *pvParameters) {
@@ -42,9 +52,7 @@ void trigger_task(void *pvParameters) {
     while (1) {
         xSemaphoreGive(xSemaphoreTrigger);
 
-        gpio_put(TRIGGER_PIN, 1);
-        sleep_us(10);
-        gpio_put(TRIGGER_PIN, 0);
+        trigger_sensor();
 
         vTaskDelay(pdMS_TO_TICKS(500));
     }
@@ -52,7 +60,8 @@ void trigger_task(void *pvParameters) {
 
 void echo_task(void *pvParameters) {
     (void) pvParameters;
-    const float conversion_factor = 58.0;
+    const float conversion_factor = 58.0f; 
+
     while (1) {
         if (xSemaphoreTake(xSemaphoreTrigger, portMAX_DELAY) == pdTRUE) {
             uint64_t pulse_time;
@@ -77,6 +86,7 @@ void oled_task(void *pvParameters) {
         float distance;
         if (xQueueReceive(xQueueDistance, &distance, portMAX_DELAY) == pdTRUE) {
             gfx_clear_buffer(&disp);
+
             if (distance < 0) {
                 gfx_draw_string(&disp, 0, 0, 1, "Sensor Falhou!");
             } else {
@@ -85,8 +95,9 @@ void oled_task(void *pvParameters) {
                 gfx_draw_string(&disp, 0, 0, 1, buf);
 
                 int max_bar_length = 112;
-                if (distance > 100.0f)
+                if (distance > 100.0f) {
                     distance = 100.0f;
+                }
                 int bar_length = (int)((distance / 100.0f) * max_bar_length);
                 gfx_draw_line(&disp, 8, 27, 8 + bar_length, 27);
             }
