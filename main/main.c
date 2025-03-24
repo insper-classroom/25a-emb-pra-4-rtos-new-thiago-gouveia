@@ -14,12 +14,13 @@
 #define STACK_SIZE_ECHO 512
 #define STACK_SIZE_OLED 1024
 
+static uint64_t local_start = 0;
+
 QueueHandle_t xQueueTime = NULL;
 QueueHandle_t xQueueDistance = NULL;
 SemaphoreHandle_t xSemaphoreTrigger = NULL;
 
 void pin_callback(uint gpio, uint32_t events) {
-    static uint64_t local_start;
     if (gpio == ECHO_PIN) {
         if (events & GPIO_IRQ_EDGE_RISE) {
             local_start = time_us_64();
